@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý User</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+    h1 { margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f5f5f5; }
+    .btn { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn-primary { background: #1976d2; color: #fff; }
+    .btn-edit { background: #2e7d32; color: #fff; margin-right: 6px; }
+    .btn-delete { background: #c62828; color: #fff; }
+    .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 10; }
+    .overlay.show { display: flex; }
+    .modal { background: #fff; padding: 24px; border-radius: 12px; width: 100%; max-width: 400px; }
+    .modal h2 { margin-top: 0; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; margin-bottom: 4px; font-weight: 500; }
+    .form-group input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .modal-actions { margin-top: 20px; display: flex; gap: 10px; }
+    .msg { padding: 10px; border-radius: 6px; margin-bottom: 16px; }
+    .msg.error { background: #ffebee; color: #c62828; }
+    .msg.success { background: #e8f5e9; color: #2e7d32; }
+    .empty { color: #666; padding: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Quản lý User</h1>
+  <div id="message"></div>
+  <p>
+    <button type="button" class="btn btn-primary" id="btnAdd">+ Thêm user</button>
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Họ tên</th>
+        <th>Email</th>
+        <th>Số điện thoại</th>
+        <th>Ngày tạo</th>
+        <th>Thao tác</th>
+      </tr>
+    </thead>
+    <tbody id="userList"></tbody>
+  </table>
+
+  <div class="overlay" id="modal">
+    <div class="modal">
+      <h2 id="modalTitle">Thêm user</h2>
+      <form id="userForm">
+        <input type="hidden" id="userId" />
+        <div class="form-group">
+          <label for="name">Họ tên *</label>
+          <input type="text" id="name" required />
+        </div>
+        <div class="form-group">
+          <label for="email">Email *</label>
+          <input type="email" id="email" required />
+        </div>
+        <div class="form-group">
+          <label for="phone">Số điện thoại</label>
+          <input type="tel" id="phone" />
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Lưu</button>
+          <button type="button" class="btn" id="btnCancel">Hủy</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API = '/api/users';
+    const tbody = document.getElementById('userList');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const form = document.getElementById('userForm');
+    const msgEl = document.getElementById('message');
+
+    function showMsg(text, type = 'success') {
+      msgEl.textContent = text;
+      msgEl.className = 'msg ' + type;
+      msgEl.style.display = 'block';
+      setTimeout(() => { msgEl.style.display = 'none'; }, 4000);
+    }
+
+    async function loadUsers() {
+      try {
+        const res = await fetch(API);
+        const users = await res.json();
+        if (!users.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty">Chưa có user nào. Bấm "Thêm user" để tạo.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = users.map((u, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${escapeHtml(u.name)}</td>
+            <td>${escapeHtml(u.email)}</td>
+            <td>${escapeHtml(u.phone || '-')}</td>
+            <td>${formatDate(u.createdAt)}</td>
+            <td>
+              <button type="button" class="btn btn-edit" data-id="${u.id}">Sửa</button>
+              <button type="button" class="btn btn-delete" data-id="${u.id}">Xóa</button>
+            </td>
+          </tr>
+        `).join('');
+        tbody.querySelectorAll('.btn-edit').forEach(btn => btn.addEventListener('click', () => openEdit(btn.dataset.id)));
+        tbody.querySelectorAll('.btn-delete').forEach(btn => btn.addEventListener('click', () => doDelete(btn.dataset.id)));
+      } catch (e) {
+        showMsg('Không tải được danh sách: ' + e.message, 'error');
+      }
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function formatDate(s) {
+      if (!s) return '-';
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s : d.toLocaleString('vi-VN');
+    }
+
+    function openAdd() {
+      document.getElementById('userId').value = '';
+      document.getElementById('name').value = '';
+      document.getElementById('email').value = '';
+      document.getElementById('phone').value = '';
+      modalTitle.textContent = 'Thêm user';
+      modal.classList.add('show');
+    }
+
+    async function openEdit(id) {
+      try {
+        const res = await fetch(API + '/' + id);
+        if (!res.ok) throw new Error('Không tìm thấy user');
+        const u = await res.json();
+        document.getElementById('userId').value = u.id;
+        document.getElementById('name').value = u.name;
+        document.getElementById('email').value = u.email;
+        document.getElementById('phone').value = u.phone || '';
+        modalTitle.textContent = 'Sửa user';
+        modal.classList.add('show');
+      } catch (e) {
+        showMsg(e.message, 'error');
+      }
+    }
+
+    async function doDelete(id) {
+      if (!confirm('Bạn có chắc muốn xóa user này?')) return;
+      try {
+        const res = await fetch(API + '/' + id, { method: 'DELETE' });
+        if (!res.ok) throw new Error((await res.json()).error || 'Xóa thất bại');
+        showMsg('Đã xóa user.');
+        loadUsers();
+      } catch (e) {
+        showMsg(e.message, 'error');
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('userId').value;
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        phone: document.getElementById('phone').value.trim()
+      };
+      try {
+        const url = id ? API + '/' + id : API;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Lỗi');
+        showMsg(id ? 'Đã cập nhật user.' : 'Đã thêm user.');
+        modal.classList.remove('show');
+        loadUsers();
+      } catch (e) {
+        showMsg(e.message, 'error');
+      }
+    });
+
+    document.getElementById('btnAdd').addEventListener('click', openAdd);
+    document.getElementById('btnCancel').addEventListener('click', () => modal.classList.remove('show'));
+
+    loadUsers();
+  </script>
+</body>
+</html>
