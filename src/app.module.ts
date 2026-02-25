@@ -17,7 +17,10 @@ import { AuthModule } from './auth/auth.module';
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_DATABASE || 'test_cloud_run',
       autoLoadEntities: true,
-      synchronize: false, // schema qua migration (chạy: npm run migration:run)
+      synchronize: false,
+      // Cloud Run: retry kết nối DB thay vì crash ngay
+      retryAttempts: 5,
+      retryDelay: 2000,
     }),
     UserModule,
     AuthModule,

@@ -2,7 +2,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package*.json ./
+# Chỉ cần package.json – npm install không phụ thuộc lock file
+COPY package.json ./
 RUN npm install
 
 COPY . .
@@ -15,7 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
-COPY package*.json ./
+COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
